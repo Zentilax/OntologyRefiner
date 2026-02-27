@@ -201,6 +201,8 @@ async def mutate_ontology(payload: dict):
           {"op": "set_prop_domain",    "target": "Prop",     "class_name": "Class"},
           {"op": "set_prop_range_class","target":"Prop",     "class_name": "Class"},
           {"op": "set_prop_range_type","target": "Prop",     "range_type": "str|int|float|bool"},
+          {"op": "set_data_value",     "subject": "Ind",     "property": "Prop", "value": "val", "value_type": "str|int|float|bool"},
+          {"op": "delete_data_value",  "subject": "Ind",     "property": "Prop"},
         ]
       }
     """
@@ -333,6 +335,36 @@ async def mutate_ontology(payload: dict):
                     if rng_type is None:
                         raise ValueError(f"Unknown type '{op['range_type']}'")
                     prop.range = [rng_type]
+                    applied.append(op)
+
+                elif op_name == "set_data_value":
+                    # Set (overwrite) a data property value on an individual.
+                    # op: { "subject": "IndName", "property": "PropName", "value": "new val", "value_type": "str|int|float|bool" }
+                    subj = find_individual(onto, op["subject"])
+                    prop = find_property(onto, op["property"])
+                    if subj is None:
+                        raise ValueError(f"Individual '{op['subject']}' not found")
+                    if prop is None:
+                        raise ValueError(f"Property '{op['property']}' not found")
+                    raw = op.get("value", "")
+                    vtype = type_map.get((op.get("value_type") or "str").lower(), str)
+                    try:
+                        coerced = vtype(raw)
+                    except (ValueError, TypeError):
+                        raise ValueError(f"Cannot convert '{raw}' to {vtype.__name__}")
+                    setattr(subj, prop.name, [coerced])
+                    applied.append(op)
+
+                elif op_name == "delete_data_value":
+                    # Remove all data property values for a given property on an individual.
+                    # op: { "subject": "IndName", "property": "PropName" }
+                    subj = find_individual(onto, op["subject"])
+                    prop = find_property(onto, op["property"])
+                    if subj is None:
+                        raise ValueError(f"Individual '{op['subject']}' not found")
+                    if prop is None:
+                        raise ValueError(f"Property '{op['property']}' not found")
+                    setattr(subj, prop.name, [])
                     applied.append(op)
 
                 else:
